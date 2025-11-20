@@ -300,7 +300,6 @@ def compute_snapshot_features_for_event(
         "n_forward_options": int(n_forward_options),
         # context columns (safe get)
         "game_state": event_row.get("game_state"),
-        "team_in_possession_phase_type": event_row.get("team_in_possession_phase_type"),
         "team_out_of_possession_phase_type": event_row.get("team_out_of_possession_phase_type"),
         "third_start": third_start,
         "third_end": third_end,
