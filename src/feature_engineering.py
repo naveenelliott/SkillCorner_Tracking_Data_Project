@@ -67,6 +67,7 @@ def compute_snapshot_features_for_event(
     - Detects centered coordinates and computes goal positions accordingly.
     - Deduplicates tracking rows per player, excludes non-detections, excludes self when counting teammates.
     - Includes max_player_targeted_xthreat and fills third_start/third_end when missing.
+    - Computes dist_to_attacking_goal using event_row['attacking_side'] if present.
     Returns dict of features or {'error': <msg>}.
     """
     import pandas as pd
@@ -143,9 +144,6 @@ def compute_snapshot_features_for_event(
     frame_df["x"] = pd.to_numeric(frame_df["x"], errors="coerce")
     frame_df["y"] = pd.to_numeric(frame_df["y"], errors="coerce")
 
-    pts = frame_df[["x", "y"]].to_numpy(dtype=float)
-    teams = frame_df["team_shortname"].to_numpy(dtype=object)
-
     # 6) player presence check
     player_mask = frame_df["player_id"] == rec_player_id
     if player_mask.sum() == 0:
@@ -170,20 +168,12 @@ def compute_snapshot_features_for_event(
 
     # 8) build a clean snapshot (deduplicate per player_id, remove invalid ids and optionally ghost rows)
     clean_snap = frame_df.copy()
-    # drop invalid / negative ids
     clean_snap = clean_snap[clean_snap["player_id"] >= 0]
-    # prefer detected rows if present
     if "is_detected" in clean_snap.columns:
-        # keep detected rows; but if a player has no detected row, keep first available
-        detected = clean_snap[clean_snap["is_detected"] == True]
-        # we will drop duplicates keeping first detected if exists, else first overall
         clean_snap = clean_snap.sort_values(["player_id", "is_detected"], ascending=[True, False])
     else:
         clean_snap = clean_snap.sort_values("player_id")
-    # drop duplicates keeping first per player_id
     clean_snap = clean_snap.drop_duplicates(subset=["player_id"], keep="first")
-
-    # map teams again on clean snapshot (safe)
     clean_snap["team_shortname"] = clean_snap["player_id"].map(player_team_map).fillna(clean_snap.get("team_shortname", "UNKNOWN"))
 
     # 9) separate teammates / opponents arrays (from clean snapshot)
@@ -231,12 +221,9 @@ def compute_snapshot_features_for_event(
         n_forward_options = int(teammates_ahead["player_id"].nunique())
     except Exception:
         n_forward_options = 0
-
-    # defensive cap (safety)
     if n_forward_options < 0:
         n_forward_options = 0
     if n_forward_options > 11:
-        # improbable, cap at 11 to indicate suspicious value
         n_forward_options = min(n_forward_options, 11)
 
     # 13) distances to both goals (safe)
@@ -244,6 +231,26 @@ def compute_snapshot_features_for_event(
     dist_to_right_goal = math.hypot(px - goal_right[0], py - goal_right[1])
     dist_to_near_goal = float(min(dist_to_left_goal, dist_to_right_goal))
     dist_to_far_goal = float(max(dist_to_left_goal, dist_to_right_goal))
+
+    # Determine attacking side from event_row (fall back to provider assumption if missing)
+    attacking_side = event_row.get("attacking_side")
+    if pd.isna(attacking_side) or attacking_side is None:
+        # provider mirrors so team in possession attacks left->right by default in per-period mirroring;
+        # if you want to be strict you can inspect event_row/team_in_possession, but default to left_to_right
+        attacking_side = "left_to_right"
+
+    # normalize the attacking_side string
+    attacking_side = str(attacking_side).strip().lower()
+
+    # NEW: distance to attacking goal based on attacking_side
+    # attacking towards right -> attacking goal is right goal; attacking towards left -> left goal
+    if attacking_side in ("left_to_right", "left_to_right " , "left_to_right".strip()):
+        dist_to_attacking_goal = float(dist_to_right_goal)
+    elif attacking_side in ("right_to_left", "right_to_left " , "right_to_left".strip()):
+        dist_to_attacking_goal = float(dist_to_left_goal)
+    else:
+        # fallback: assume left_to_right
+        dist_to_attacking_goal = float(dist_to_right_goal)
 
     # 14) read max_player_targeted_xthreat from event row (NaN-safe)
     xthreat_val = event_row.get("max_player_targeted_xthreat")
@@ -293,6 +300,7 @@ def compute_snapshot_features_for_event(
         "rec_team_short": rec_team_short,
         "dist_to_near_goal": dist_to_near_goal,
         "dist_to_far_goal": dist_to_far_goal,
+        "dist_to_attacking_goal": dist_to_attacking_goal,        # <-- attacking-side aware
         "d_nearest_opp": float(d_nearest_opp) if not (d_nearest_opp is None) and not (isinstance(d_nearest_opp, float) and np.isnan(d_nearest_opp)) else np.nan,
         "n_opp_within5": int(n_opp_within5),
         "d_nearest_team": float(d_nearest_team) if not (d_nearest_team is None) and not (isinstance(d_nearest_team, float) and np.isnan(d_nearest_team)) else np.nan,
@@ -310,6 +318,7 @@ def compute_snapshot_features_for_event(
     }
 
     return features
+
 
 # Orchestration functions -----------------------------------------------------
 def build_player_team_map_from_events(events_df: pd.DataFrame, match_id: int) -> Dict[int, str]:
