@@ -75,6 +75,8 @@ def compute_snapshot_features_for_event(
     import math
     from scipy.spatial import cKDTree
 
+    print(event_row)
+
     # 1) choose anchor frame (safe)
     frame_candidate = None
     for col in ("frame_end", "frame_start"):
