@@ -259,6 +259,18 @@ def compute_snapshot_features_for_event(
     except Exception:
         max_player_targeted_xthreat = np.nan
 
+    dangerous_val = event_row.get("player_targeted_dangerous")
+    try:
+        dangerous_val = float(dangerous_val) if pd.notna(dangerous_val) else np.nan
+    except Exception:
+        dangerous_val = np.nan
+
+    dangerous_passes = event_row.get("n_passing_options_dangerous_not_difficult")
+    try:
+        dangerous_passes = float(dangerous_passes) if pd.notna(dangerous_passes) else np.nan
+    except Exception:
+        dangerous_passes = np.nan
+
     # 15) compute thirds if missing in event row (use px_0based and pitch thirds)
     def classify_third_from_x(x0):
         if x0 <= (pitch_length / 3.0):
@@ -316,8 +328,8 @@ def compute_snapshot_features_for_event(
         "end_type": event_row.get("end_type"),
         # label included
         "max_player_targeted_xthreat": max_player_targeted_xthreat,
-        "player_targeted_dangerous": event_row.get("player_targeted_dangerous"),
-        "n_passing_options_dangerous_not_difficult": event_row.get("n_passing_options_dangerous_not_difficult")
+        "player_targeted_dangerous": dangerous_val,
+        "n_passing_options_dangerous_not_difficult": dangerous_passes
     }
 
     return features
@@ -412,15 +424,27 @@ def compute_features_for_all_events(events_csv: Path = EVENTS_CSV, tracking_csv:
             feat["Unique ID"] = unique
             feat["event_row_index"] = int(idx)
             feat["source_file"] = ev.get("source_file") if "source_file" in ev else None
-            if "max_player_targeted_xthreat" not in feat:
-                raw = ev.get("max_player_targeted_xthreat")
-                feat["max_player_targeted_xthreat"] = float(raw) if pd.notna(raw) else np.nan
+            dangerous_cols = [
+                "player_targeted_dangerous",
+                "n_passing_options_dangerous_not_difficult",
+                "max_player_targeted_xthreat",
+            ]
+
+            for col in dangerous_cols:
+                raw = ev.get(col) if col in ev else np.nan
+                if col not in feat or pd.isna(feat[col]):
+                    try:
+                        feat[col] = float(raw) if pd.notna(raw) else np.nan
+                    except:
+                        feat[col] = raw
 
         all_features.append(feat)
     for i, rec in enumerate(all_features):
         if isinstance(rec, dict):
             # ensure column exists for every dict record
             rec.setdefault("max_player_targeted_xthreat", np.nan)
+            rec.setdefault("player_targeted_dangerous", np.nan)
+            rec.setdefault("n_passing_options_dangerous_not_difficult", np.nan)
         else:
             # convert non-dict rows to minimal dict so DataFrame is consistent
             all_features[i] = {"error": "non_dict_record", "max_player_targeted_xthreat": np.nan}
