@@ -290,6 +290,7 @@ def compute_snapshot_features_for_event(
         else:
             third_end = third_start
 
+
     # 16) assemble feature dict with NaN-safe conversions
     features = {
         "Unique ID": event_row.get("Unique ID"),
@@ -315,6 +316,8 @@ def compute_snapshot_features_for_event(
         "end_type": event_row.get("end_type"),
         # label included
         "max_player_targeted_xthreat": max_player_targeted_xthreat,
+        "player_targeted_dangerous": event_row.get("player_targeted_dangerous"),
+        "n_passing_options_dangerous_not_difficult": event_row.get("n_passing_options_dangerous_not_difficult")
     }
 
     return features
