@@ -434,7 +434,7 @@ def compute_features_for_all_events(events_csv: Path = EVENTS_CSV, tracking_csv:
 
             for col in dangerous_cols:
                 raw = ev.get(col) if col in ev else np.nan
-                if col not in feat or pd.isna(feat[col]):
+                if col not in feat:
                     try:
                         feat[col] = float(raw) if pd.notna(raw) else np.nan
                     except:
