@@ -67,7 +67,7 @@ def compute_snapshot_features_for_event(
 
     chosen_frame = frame_candidate
 
-    frame_start = chosen_frame.copy()
+    frame_start = chosen_frame
 
     frame_end = event_row.get('frame_end')
     frame_end = int(frame_end)
