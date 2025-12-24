@@ -94,6 +94,7 @@ def compute_snapshot_features_for_event(
 
     # 4) team short — prefer event team_shortname, else map from player_team_map
     rec_team_short = event_row.get("team_shortname")
+    rec_team_id = event_row.get('team_id')
 
     # 5) prepare frame data safely
     frame_df = frame_df.copy()
@@ -279,6 +280,7 @@ def compute_snapshot_features_for_event(
         "frame_end": int(frame_end),
         "rec_player_id": int(rec_player_id),
         "rec_team_short": rec_team_short,
+        'rec_team_id': rec_team_id,
         "dist_to_near_goal": dist_to_near_goal,
         "dist_to_far_goal": dist_to_far_goal,
         "dist_to_attacking_goal": dist_to_attacking_goal,        # <-- attacking-side aware
