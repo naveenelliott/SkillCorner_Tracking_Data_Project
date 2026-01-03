@@ -312,7 +312,7 @@ def build_player_team_map_from_events(events_df: pd.DataFrame, match_id: int) ->
     # prefer player_in_possession_id -> team_shortname mapping
     mapping = {}
     # candidate columns that hold player ids and team names
-    player_cols = [col for col in ["player_in_possession_id", "player_targeted_id", "player_id"] if col in evm.columns]
+    player_cols = [col for col in ["player_id"] if col in evm.columns]
     for _, row in evm.iterrows():
         for pc in player_cols:
             pid = row.get(pc)
@@ -364,13 +364,10 @@ def compute_features_for_all_events(events_csv: Path = EVENTS_CSV, tracking_csv:
         frame_dict = build_frames_dict(tracking_df, match_id)
 
         # --- NaN-safe player ID handling ---
-        pid = ev.get("player_in_possession_id")
-        ptid = ev.get("player_targeted_id")
+        pid = ev.get("player_id")
 
         if pd.notna(pid):
             rec_player_id = int(pid)
-        elif pd.notna(ptid):
-            rec_player_id = int(ptid)
         else:
             # no valid player id, skip row
             feat = {"error": "no_player_id", "Unique ID": unique, "event_row_index": int(idx)}
