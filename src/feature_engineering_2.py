@@ -77,18 +77,12 @@ def compute_snapshot_features_for_event(
         return {"error": "frame_missing"}
 
     # 3) NaN-safe player id selection
-    pid = event_row.get("player_in_possession_id")
-    ptid = event_row.get("player_targeted_id")
-    if pd.notna(pid):
-        try:
-            rec_player_id = int(pid)
-        except Exception:
-            return {"error": "invalid_player_in_possession_id"}
-    elif pd.notna(ptid):
+    ptid = event_row.get("player_id")
+    if pd.notna(ptid):
         try:
             rec_player_id = int(ptid)
         except Exception:
-            return {"error": "invalid_player_targeted_id"}
+            return {"error": "invalid_player_id"}
     else:
         return {"error": "no_player_id"}
 
