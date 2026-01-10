@@ -7,6 +7,7 @@ from matplotlib import animation
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 import matplotlib.pyplot as plt
 from matplotlib.animation import PillowWriter
+from matplotlib.widgets import Button
 
 results_df = pd.read_csv('Our Datasets/classifier_results_logreg.csv')
 
@@ -42,8 +43,10 @@ tracking_data_highest_iterable = tracking_data_highest_iterable[['match_id', 'fr
 
 tracking_data_highest_iterable.drop_duplicates(inplace=True)
 
+frame_start_wanted = tracking_data_highest_iterable.loc[22, 'frame_start']
 
-tracking_data_highest = tracking_data_highest.loc[(tracking_data_highest['frame'] >= 32474) & (tracking_data_highest['frame'] <= 32714)]
+
+tracking_data_highest = tracking_data_highest.loc[(tracking_data_highest['frame'] >= 36703) & (tracking_data_highest['frame'] <= 36903)]
 
 tracking_data_highest.reset_index(drop=True, inplace=True)
 
@@ -153,9 +156,13 @@ enriched_tracking_data = tracking_data_highest.merge(
 
 #enriched_tracking_data['rec_team_short'] = enriched_tracking_data['rec_team_short'] + ' ' + 'Football Club'
 
-idx = enriched_tracking_data['rec_player_id'].first_valid_index()
+idx = enriched_tracking_data.loc[
+    enriched_tracking_data['frame'] == frame_start_wanted
+].index[0]
 
 recover_player_id = enriched_tracking_data.loc[idx, 'rec_player_id']
+
+prev_player_id = enriched_tracking_data.loc[idx, 'prev_player_id']
 
 
 # team of the recovering player
@@ -181,9 +188,21 @@ df_home = enriched_tracking_data[enriched_tracking_data['tip'] == True]
 
 df_ball = enriched_tracking_data[enriched_tracking_data.ball_carrier == True]
 
+df_prev_player = enriched_tracking_data.loc[enriched_tracking_data['player_id'] == prev_player_id]
+
 # First set up the figure, the axis
 pitch = Pitch(pitch_type='skillcorner', goal_type='line', pitch_width=68, pitch_length=105)
 fig, ax = pitch.draw(figsize=(16, 10.4))
+
+frame_text = ax.text(
+    2,  # x-pos on pitch (meters)
+    70, # y-pos — just above top touchline
+    "",
+    fontsize=14,
+    color="black",
+    ha="left",
+    va="center"
+)
 
 # then setup the pitch plot markers we want to animate
 marker_kwargs = {'marker': 'o', 'markeredgecolor': 'black', 'linestyle': 'None'}
@@ -192,57 +211,78 @@ away, = ax.plot([], [], ms=10, markerfacecolor='red', **marker_kwargs)  # red/ma
 home, = ax.plot([], [], ms=10, markerfacecolor='green', **marker_kwargs)  # purple
 recover, = ax.plot([], [], ms=14, markerfacecolor='#00ff00',
                    zorder=5, **marker_kwargs)
+prev_player, = ax.plot([], [], ms=14, markerfacecolor='salmon',
+                   zorder=5, **marker_kwargs)
 arrow = ax.arrow(0, 0, 0, 0, color='black', width=0.25, zorder=4, length_includes_head=True)
 
 ARROW_LEN = 0.5  # in pitch units (meters for SkillCorner)
 
 
-df_ball = df_ball.sort_values("frame").reset_index(drop=True)
-
-df_ball.drop_duplicates(subset=['frame'], inplace=True)
+# make sure df_ball is sorted & clean
+df_ball = df_ball.sort_values("frame").drop_duplicates("frame").reset_index(drop=True)
 
 df_home['frame'] = df_home['frame'].astype(int)
 df_away['frame'] = df_away['frame'].astype(int)
 df_ball['frame'] = df_ball['frame'].astype(int)
+df_prev_player['frame'] = df_prev_player['frame'].astype(int)
 
 def animate(i):
-    frame = df_ball.iloc[i]['frame']
+    global arrow
+
+    # safety: wrap if i somehow exceeds length
+    if i >= len(df_ball):
+        return ball, away, home, recover, arrow, prev_player
+
+    frame = int(df_ball.iloc[i]['frame'])
+    
+    frame_text.set_text(f"Frame: {frame}")
 
     # --- ball position ---
     bx = df_ball.iloc[i]['ball_x']
     by = df_ball.iloc[i]['ball_y']
     ball.set_data([bx], [by])
 
-    # players
+    # --- players for this frame ---
     away_frame = df_away[df_away.frame == frame]
     home_frame = df_home[df_home.frame == frame]
 
-    away.set_data(list(away_frame['x']), list(away_frame['y']))
-    home.set_data(list(home_frame['x']), list(home_frame['y']))
-    
+    away.set_data(away_frame['x'].values, away_frame['y'].values)
+    home.set_data(home_frame['x'].values, home_frame['y'].values)
+
+    # --- recovering player (ball carrier at that frame) ---
     recover.set_data(
         [df_ball.iloc[i]['x']],
         [df_ball.iloc[i]['y']]
     )
-    
+
+    # --- previous player at this frame (use frame match, not raw i) ---
+    prev_frame = df_prev_player[df_prev_player['frame'] == frame]
+    if not prev_frame.empty:
+        prev_player.set_data(
+            [prev_frame['x'].iloc[0]],
+            [prev_frame['y'].iloc[0]]
+        )
+
     # --- DIRECTION ARROW ---
-    global arrow
     if i > 0:
         px = df_ball.iloc[i-1]['ball_x']
         py = df_ball.iloc[i-1]['ball_y']
- 
+
         dx = bx - px
         dy = by - py
- 
-        # remove old arrow
-        arrow.remove()
-        
-        # -------- normalize length --------
+
+        # remove old arrow if it exists
+        try:
+            arrow.remove()
+        except Exception:
+            pass
+
+        # normalize length
         mag = np.hypot(dx, dy)
         if mag > 0:
             dx = dx / mag * ARROW_LEN
             dy = dy / mag * ARROW_LEN
- 
+
         # draw new arrow
         arrow = ax.arrow(px, py, dx, dy,
                          color='black',
@@ -250,7 +290,7 @@ def animate(i):
                          length_includes_head=True,
                          zorder=4)
 
-    return ball, away, home, recover, arrow
+    return ball, away, home, recover, arrow, prev_player, frame_text
 
 
 # 👇 KEEP ANIMATION OBJECT IN A VARIABLE THAT PERSISTS
@@ -258,11 +298,38 @@ anim = FuncAnimation(
     fig,
     animate,
     frames=len(df_ball),
-    interval=100,        # 1 second per frame (for display)
+    interval=100,
     blit=False,
     repeat=False
 )
 
+# --- BUTTONS ---
+axreset = plt.axes([0.59, 0.02, 0.1, 0.05])
+axplay  = plt.axes([0.70, 0.02, 0.1, 0.05])
+axpause = plt.axes([0.81, 0.02, 0.1, 0.05])
+
+breset = Button(axreset, 'Restart')
+bplay  = Button(axplay,  'Play')
+bpause = Button(axpause, 'Pause')
+
+def restart(event):
+    # stop, rewind frames to 0, then start again
+    anim.event_source.stop()
+    anim.frame_seq = anim.new_frame_seq()
+    anim.event_source.start()
+
+def play(event):
+    anim.event_source.start()
+
+def pause(event):
+    anim.event_source.stop()
+
+breset.on_clicked(restart)
+bplay.on_clicked(play)
+bpause.on_clicked(pause)
+
+plt.show()
+
 # 👇 SAVE AFTER DISPLAY IS CREATED
-writer = PillowWriter(fps=5)      # 1 frame per second in the GIF too
-anim.save("notebooks/Analysis/goal_animation.gif", writer=writer, dpi=120)
+#writer = PillowWriter(fps=5)      # 1 frame per second in the GIF too
+#anim.save("notebooks/Analysis/goal_animation.gif", writer=writer)

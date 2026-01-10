@@ -85,6 +85,9 @@ def compute_snapshot_features_for_event(
             return {"error": "invalid_player_id"}
     else:
         return {"error": "no_player_id"}
+    
+    pid_prev = event_row.get("prev_player_in_possession_id")
+    pname_prev = event_row.get("prev_player_in_possession_name")
 
     # 4) team short — prefer event team_shortname, else map from player_team_map
     rec_team_short = event_row.get("team_shortname")
@@ -273,6 +276,8 @@ def compute_snapshot_features_for_event(
         "frame_start": int(frame_start),
         "frame_end": int(frame_end),
         "rec_player_id": int(rec_player_id),
+        'prev_player_id': int(pid_prev) if pd.notna(pid_prev) else None,
+        'prev_player_name': str(pname_prev) if pd.notna(pname_prev) else None,
         "rec_team_short": rec_team_short,
         'rec_team_id': rec_team_id,
         "dist_to_near_goal": dist_to_near_goal,
@@ -362,17 +367,6 @@ def compute_features_for_all_events(events_csv: Path = EVENTS_CSV, tracking_csv:
             continue  # skip matches without frames
 
         frame_dict = build_frames_dict(tracking_df, match_id)
-
-        # --- NaN-safe player ID handling ---
-        pid = ev.get("player_id")
-
-        if pd.notna(pid):
-            rec_player_id = int(pid)
-        else:
-            # no valid player id, skip row
-            feat = {"error": "no_player_id", "Unique ID": unique, "event_row_index": int(idx)}
-            all_features.append(feat)
-            continue
 
         # Build player->team map
         player_team_map = build_player_team_map_from_events(events_df, match_id)
